@@ -281,22 +281,26 @@ def generate_combined_response(query):
             ])
         
         # Create enhanced prompt that explicitly instructs to cite lecture numbers
+        # Create enhanced prompt that explicitly instructs to cite lecture numbers and provide answers even without context
         prompt = f"""
         User Query: {query}
-        
+
         Text Context:
-        {text_context if text_context else "No relevant text information found."}
-        
+        {text_context if text_context else "No information found in the provided sources."}
+
         Image References:
         {image_context if image_context else "No relevant images found."}
-        
+
         INSTRUCTIONS:
-        1. Based on the provided context, answer the user's query thoroughly.
-        2. ALWAYS cite the specific lecture numbers when providing information (e.g., "As explained in Lecture 3..." or "According to Lecture 5...").
-        3. If there are relevant images that would help illustrate your answer, mention them by referring to their number and lecture (e.g., "As shown in Image 1 from Lecture 2...").
-        4. Make the lecture number references a natural part of your answer, not just citations at the end.
-        5. If the lecture number is unknown for some sources, you can mention this (e.g., "from an unspecified lecture").
-        """
+        1. FIRST try to answer the query using the provided context. If the context contains relevant information, use it and cite accordingly.
+        2. If the sources do NOT provide sufficient information to answer the query, use your general knowledge to provide the BEST POSSIBLE answer. Clearly indicate when you're using information beyond what's in the provided sources by saying something like "While this isn't covered in the lecture materials..."
+        3. NEVER respond with "I don't have enough information" or similar phrases. ALWAYS provide a helpful answer to the best of your ability.
+        4. When using information from the provided sources, ALWAYS cite the specific lecture numbers (e.g., "As explained in Lecture 3..." or "According to Lecture 5...").
+        5. If there are relevant images that would help illustrate your answer, mention them by referring to their number and lecture (e.g., "As shown in Image 1 from Lecture 2...").
+        6. Make the lecture number references a natural part of your answer, not just citations at the end.
+        7. If the lecture number is unknown for some sources, you can mention this (e.g., "from an unspecified lecture").
+        8. Aim to provide comprehensive, accurate, and helpful responses regardless of whether the information comes from the provided sources or your general knowledge.
+        """        
         
         try:
             # First try the enhanced direct approach with lecture citation instructions
