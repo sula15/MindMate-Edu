@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+
+# Virtual environments
+env/
+venv/
+ENV/
+.venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# VSCode and other IDE settings
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Environment variables and secrets
+.env
+*.key
+*.pem
+
+# Model files and large assets
+*.h5
+*.pt
+*.pth
+*.tflite
+*.onnx
+*.pb
+*.joblib
+*.pkl
+
+# Data files
+data/
+*.csv
+*.tsv
+*.json
+*.db
+*.sqlite
+
+# Node.js (if frontend present)
+node_modules/
+*.log
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore.indexes.json
+firestore.rules
+storage.rules
+
+# Other
+*.bak
+*.swp

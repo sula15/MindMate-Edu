@@ -1,0 +1,21 @@
+streamlit==1.32.0
+PyMuPDF==1.22.3
+transformers==4.39.1
+torch==2.2.0
+sentence-transformers==2.4.0
+pymilvus==2.3.4
+google-generativeai==0.7.1
+nltk==3.8.1
+pandas==2.2.0
+python-dotenv==1.0.1
+
+# Additional requirements for PDF processing and search
+pillow==10.2.0
+matplotlib==3.8.2
+tqdm==4.66.1
+numpy==1.26.3
+pymongo==4.6.1
+
+# For the GAD module
+
+SpeechRecognition==3.14.2
