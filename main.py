@@ -12,6 +12,9 @@ import numpy as np
 import speech_recognition as sr
 import librosa # type: ignore
 from transformers import BertTokenizer
+from dotenv import load_dotenv
+from pymongo import MongoClient
+from pymilvus import connections, utility
 
 # Set page config as the very first Streamlit command
 st.set_page_config(
@@ -61,6 +64,8 @@ from pdf_processor import(
 
 from semantic_chunker import process_document_with_semantic_chunking
 
+from anxiety_app import render_anxiety_solutions_ui
+
 
 # Initialize session state
 if 'messages' not in st.session_state:
@@ -99,6 +104,70 @@ if 'anxiety_chat_history' not in st.session_state:
     
 if 'anxiety_transcript' not in st.session_state:
     st.session_state.anxiety_transcript = ""
+
+# Function to get available MongoDB collections
+def get_mongodb_collections():
+    """Get available collections from local MongoDB"""
+    try:
+        # Use a direct local connection for lecture_images database
+        local_mongo_uri = "mongodb://localhost:27017/"
+        
+        # Connect to local MongoDB
+        client = MongoClient(local_mongo_uri)
+        
+        # Use the lecture_images database specifically
+        db = client["lecture_images"]
+        
+        # Get ALL collections without filtering
+        collections = db.list_collection_names()
+        logging.info(f"Found {len(collections)} collections in lecture_images database: {collections}")
+        
+        # Always include the current collection
+        if st.session_state.mongodb_collection not in collections and st.session_state.mongodb_collection:
+            collections.append(st.session_state.mongodb_collection)
+            
+        # Print for debugging
+        logging.info(f"Total MongoDB collections found: {len(collections)}")
+        
+        client.close()
+        return sorted(collections)
+    except Exception as e:
+        logging.error(f"Error getting MongoDB collections: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        # Return default collection if error
+        return [st.session_state.mongodb_collection]
+
+# Function to get available Milvus collections
+def get_milvus_collections():
+    """Get available collections from Milvus"""
+    try:
+        # Connect to Milvus
+        connections.connect("default", host="localhost", port="19530")
+        
+        # Get all collection names
+        collections = utility.list_collections()
+        
+        # Filter for collections containing relevant keywords or default collection names
+        filtered_collections = [
+            col for col in collections 
+            if any(kw in col.lower() for kw in ["embeddings", "image", "text"]) 
+            or col == st.session_state.text_collection
+            or col == st.session_state.milvus_collection
+        ]
+        
+        # Add default collections if not in list
+        if st.session_state.text_collection not in filtered_collections:
+            filtered_collections.append(st.session_state.text_collection)
+        if st.session_state.milvus_collection not in filtered_collections:
+            filtered_collections.append(st.session_state.milvus_collection)
+            
+        connections.disconnect("default")
+        return sorted(filtered_collections)
+    except Exception as e:
+        st.error(f"Error getting Milvus collections: {e}")
+        # Return default collections if error
+        return [st.session_state.text_collection, st.session_state.milvus_collection]
 
 # Function to generate response with personalization
 def generate_personalized_response(query):
@@ -306,26 +375,38 @@ with tab1:
         include_images = st.checkbox("Include images in responses", value=st.session_state.include_images)
         st.session_state.include_images = include_images
         
-        # Collection configuration
+        # Collection configuration with dropdowns
         st.subheader("Collection Settings")
-        text_collection = st.text_input(
+        
+        # Get available collections
+        text_collections = get_milvus_collections()
+        mongodb_collections = get_mongodb_collections()
+        milvus_image_collections = get_milvus_collections()
+        
+        # Text collection dropdown for text search
+        text_collection = st.selectbox(
             "Text Collection", 
-            value=st.session_state.text_collection,
-            help="Name of the Milvus collection for text search"
+            options=text_collections,
+            index=text_collections.index(st.session_state.text_collection) if st.session_state.text_collection in text_collections else 0,
+            help="Select the Milvus collection for text search"
         )
         st.session_state.text_collection = text_collection
         
-        mongodb_collection = st.text_input(
+        # MongoDB collection dropdown for images
+        mongodb_collection = st.selectbox(
             "MongoDB Images Collection", 
-            value=st.session_state.mongodb_collection,
-            help="Name of the MongoDB collection for image storage"
+            options=mongodb_collections,
+            index=mongodb_collections.index(st.session_state.mongodb_collection) if st.session_state.mongodb_collection in mongodb_collections else 0,
+            help="Select the MongoDB collection for image storage"
         )
         st.session_state.mongodb_collection = mongodb_collection
         
-        milvus_collection = st.text_input(
+        # Milvus collection dropdown for image embeddings
+        milvus_collection = st.selectbox(
             "Milvus Images Collection", 
-            value=st.session_state.milvus_collection,
-            help="Name of the Milvus collection for image embeddings"
+            options=milvus_image_collections,
+            index=milvus_image_collections.index(st.session_state.milvus_collection) if st.session_state.milvus_collection in milvus_image_collections else 0,
+            help="Select the Milvus collection for image embeddings"
         )
         st.session_state.milvus_collection = milvus_collection
         
@@ -737,8 +818,15 @@ with tab3:
 
 # Anxiety Detection / Wellness Tab 
 with tab4:
-    # Call the anxiety detection UI renderer from our module
-    render_anxiety_detection_ui()
+    wellness_subtab1, wellness_subtab2 = st.tabs(["Anxiety Assessment", "Personalized Solutions"])
+    
+    with wellness_subtab1:
+        # Call the anxiety detection UI renderer from our module
+        render_anxiety_detection_ui()
+    
+    with wellness_subtab2:
+        # Call the new anxiety solutions UI component
+        render_anxiety_solutions_ui()
 
 # Add a footer
 st.markdown("---")

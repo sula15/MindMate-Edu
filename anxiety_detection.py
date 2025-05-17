@@ -1,7 +1,7 @@
 import streamlit as st
 import speech_recognition as sr
 import torch
-import librosa
+import librosa # type: ignore
 import numpy as np
 import tempfile
 import os
@@ -90,6 +90,9 @@ def get_anxiety_response(text, audio_file, tokenizer, model):
         "It seems like you are experiencing moderate anxiety. It might be helpful to talk to a mental health professional.",
         "It seems like you are experiencing severe anxiety. It's important to seek help from a professional as soon as possible."
     ]
+        # Add this line before returning
+    st.session_state.last_detected_anxiety_level = anxiety_levels[predicted_label]
+    
     return anxiety_levels[predicted_label], msg_map[predicted_label]
 
 # Save to MongoDB
