@@ -8,16 +8,14 @@ import os
 from transformers import BertTokenizer
 from datetime import datetime
 from pymongo import MongoClient
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # MongoDB connection
 def get_mongo_client():
     """Create and return a MongoDB client connection"""
-    from dotenv import load_dotenv
-    import os
-    
-    # Load environment variables
-    load_dotenv()
-    
     # Get MongoDB connection string from environment variables
     mongo_uri = os.getenv("MONGODB_URI")
     if not mongo_uri:
@@ -102,8 +100,9 @@ def save_anxiety_assessment(query, anxiety_level, has_audio=False):
     collection = db["current_anxiety_level"]
     
     data = {
+        "type": "current_anxiety_level",  # Added type field to match what get_current_anxiety_level() expects
+        "level": anxiety_level,
         "query": query,
-        "anxiety_level": anxiety_level,
         "has_audio": has_audio,
         "timestamp": datetime.now()
     }
