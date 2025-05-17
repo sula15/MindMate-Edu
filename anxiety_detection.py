@@ -12,7 +12,20 @@ from pymongo import MongoClient
 # MongoDB connection
 def get_mongo_client():
     """Create and return a MongoDB client connection"""
-    client = MongoClient("mongodb+srv://sandunikavi09:SLWhTunJGitcSxGO@cluster0.y6ppduj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+    from dotenv import load_dotenv
+    import os
+    
+    # Load environment variables
+    load_dotenv()
+    
+    # Get MongoDB connection string from environment variables
+    mongo_uri = os.getenv("MONGODB_URI")
+    if not mongo_uri:
+        # Fallback for development/testing only
+        st.warning("MongoDB URI not found in environment variables. Using fallback connection for development.")
+        mongo_uri = "mongodb://localhost:27017/"
+        
+    client = MongoClient(mongo_uri)
     return client
 
 # Load tokenizer and model

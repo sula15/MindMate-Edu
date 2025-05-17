@@ -10,7 +10,7 @@ import torch
 import io
 import numpy as np
 import speech_recognition as sr
-import librosa
+import librosa # type: ignore
 from transformers import BertTokenizer
 
 # Set page config as the very first Streamlit command

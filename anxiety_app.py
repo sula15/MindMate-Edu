@@ -6,9 +6,26 @@ import joblib
 import numpy as np
 from pymongo import MongoClient
 from sklearn.metrics.pairwise import cosine_similarity
+from dotenv import load_dotenv
+import os
 
-# MongoDB setup
-client = MongoClient("mongodb+srv://sandunikavi09:SLWhTunJGitcSxGO@cluster0.y6ppduj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+# Load environment variables
+load_dotenv()
+
+# Function to create MongoDB connection using environment variables
+def connect_to_mongodb():
+    """Create MongoDB connection using environment variables"""
+    # Get MongoDB connection string
+    mongo_uri = os.getenv("MONGODB_URI")
+    if not mongo_uri:
+        # Fallback for development/testing only
+        st.warning("MongoDB URI not found in environment variables. Using fallback connection for development.")
+        mongo_uri = "mongodb://localhost:27017/"
+    
+    return MongoClient(mongo_uri)
+
+# MongoDB setup using environment variables
+client = connect_to_mongodb()
 db = client["anxiety_db"]
 collection = db["historical_data"]
 
