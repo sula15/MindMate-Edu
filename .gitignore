@@ -13,6 +13,8 @@ env/
 venv/
 ENV/
 .venv/
+rag_env/
+
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints
