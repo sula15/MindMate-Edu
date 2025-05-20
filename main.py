@@ -361,6 +361,7 @@ add_personalization_to_sidebar()
 tab1, tab2, tab3, tab4 = st.tabs(["Chat Interface", "Upload Documents", "Learning Analytics", "Wellness Check"])
 
 # Chat Interface Tab
+# Chat Interface Tab
 with tab1:
     st.header("Chat with your documents")
     
@@ -430,10 +431,17 @@ with tab1:
             ]
             st.rerun()
     
+    # Put learning style selector directly in the Chat tab
+    if st.session_state.get("student_id"):
+        with st.expander("Select Your Learning Style", expanded=False):
+            from personalization_ui import render_learning_style_selector
+            render_learning_style_selector()
+    
     # Display recommendations if module is set and student is logged in
     if st.session_state.get("student_id") and st.session_state.get("current_module_id"):
         render_learning_path_recommendations(st.session_state.current_module_id)
     
+    # Rest of the chat interface code remains the same
     # Display chat history
     for message in st.session_state.messages:
         if message["role"] == "system":
@@ -540,7 +548,7 @@ with tab1:
                                     st.image(
                                         f"data:image/png;base64,{img['image_data']}", 
                                         caption=f"Image {i+1}", 
-                                        use_column_width=True
+                                        use_container_width=True
                                     )
                                     st.markdown(f"**Score**: {img['similarity_score']:.2f}")
                                     st.markdown(format_image_info(img))
@@ -812,6 +820,11 @@ with tab3:
     
     if st.session_state.get("student_id"):
         render_analytics_dashboard()
+        
+        # Add this utility function (optional)
+        st.divider()
+        from personalization_ui import fix_learning_style_analytics
+        fix_learning_style_analytics()
     else:
         st.info("Please log in to view your learning analytics")
         st.warning("Use the Student Personalization panel in the sidebar to log in")
