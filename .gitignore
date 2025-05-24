@@ -68,4 +68,6 @@ storage.rules
 *.swp
 
 # audio files
-audio_respon
+audio_responses/
+retrival_research/
+
