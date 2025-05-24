@@ -1,5 +1,4 @@
 import streamlit as st
-import speech_recognition as sr
 import torch
 import librosa # type: ignore
 import numpy as np
@@ -9,6 +8,7 @@ from transformers import BertTokenizer
 from datetime import datetime
 from pymongo import MongoClient
 from dotenv import load_dotenv
+import whisper  # Added for audio transcription
 
 # Load environment variables
 load_dotenv()
@@ -37,6 +37,12 @@ def load_anxiety_model():
     model.load_state_dict(torch.load("best_multimodal_model.pth", map_location=torch.device("cpu")))
     model.eval()
     return tokenizer, model
+
+# ✅ Load whisper model for audio transcription
+@st.cache_resource
+def load_whisper():
+    """Load and cache the Whisper model for speech recognition"""
+    return whisper.load_model("base")
 
 # Text Preprocessing
 def tokenize_and_pad(text, tokenizer, max_length=128):
@@ -112,34 +118,33 @@ def save_anxiety_assessment(query, anxiety_level, has_audio=False):
     collection.insert_one(data)
     client.close()
 
-# Record audio function
-def record_audio():
-    """Record audio from microphone and return path to audio file and transcript"""
-    voice_path = None
-    transcript = ""
+# ✅ FIXED: New audio recording function using Streamlit's audio_input
+def process_audio_input(audio_file, whisper_model):
+    """Process audio input using Streamlit's audio_input widget and Whisper"""
+    if audio_file is None:
+        return None, ""
+    
+    # Ensure directory for storing audio responses
+    AUDIO_SAVE_PATH = "audio_responses"
+    os.makedirs(AUDIO_SAVE_PATH, exist_ok=True)
     
     try:
-        recognizer = sr.Recognizer()
-        with sr.Microphone() as source:
-            st.info("Recording... Speak now!")
-            audio_data = recognizer.listen(source, timeout=5, phrase_time_limit=10)
-            st.success("Recording complete!")
-            
-            try:
-                transcript = recognizer.recognize_google(audio_data)
-                
-                # Save audio to temp file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
-                    f.write(audio_data.get_wav_data())
-                    voice_path = f.name
-            except Exception as recog_error:
-                st.error(f"Speech Recognition Error: {recog_error}")
-                transcript = ""
-    except Exception as mic_error:
-        st.error(f"Microphone Error: {mic_error}")
-        st.info("Please ensure your microphone is connected and permissions are granted.")
-    
-    return voice_path, transcript
+        # Define the save path for the recorded audio
+        audio_save_path = os.path.join(AUDIO_SAVE_PATH, "recorded_response.wav")
+
+        # Save the recorded audio file locally
+        with open(audio_save_path, "wb") as f:
+            f.write(audio_file.getbuffer())
+
+        # Transcribe the recorded audio using Whisper
+        transcription = whisper_model.transcribe(audio_save_path)
+        transcript = transcription["text"]
+        
+        return audio_save_path, transcript
+        
+    except Exception as e:
+        st.error(f"Error processing audio: {e}")
+        return None, ""
 
 # Get anxiety resources based on level
 def get_anxiety_resources(anxiety_level):
@@ -180,16 +185,22 @@ def render_anxiety_detection_ui():
     if 'anxiety_chat_history' not in st.session_state:
         st.session_state.anxiety_chat_history = []
         
-    if 'anxiety_transcript' not in st.session_state:
-        st.session_state.anxiety_transcript = ""
+    # ✅ FIXED: Updated session state for new audio handling
+    if "text_input_val" not in st.session_state:
+        st.session_state.text_input_val = ""
+    if "transcript" not in st.session_state:
+        st.session_state.transcript = ""
+    if "voice_path" not in st.session_state:
+        st.session_state.voice_path = ""
     
-    # Get the anxiety model and tokenizer
+    # Get the anxiety model, tokenizer, and whisper model
     try:
         tokenizer, anxiety_model = load_anxiety_model()
+        whisper_model = load_whisper()  # ✅ FIXED: Load Whisper model
         model_loaded = True
     except Exception as e:
-        st.error(f"Error loading anxiety detection model: {e}")
-        st.warning("The anxiety detection functionality is not available. Please ensure the model file 'best_multimodal_model.pth' is present.")
+        st.error(f"Error loading models: {e}")
+        st.warning("The anxiety detection functionality is not available. Please ensure the model files are present.")
         model_loaded = False
     
     if model_loaded:
@@ -211,41 +222,45 @@ def render_anxiety_detection_ui():
                     st.markdown(f"**Assessed Level:** {anxiety_level}")
                     st.markdown(response)
         
-        # Input Area with columns for better layout
+        # ✅ FIXED: New input layout with Streamlit's audio_input
         col1, col2, col3 = st.columns([1, 4, 1])
         
-        record = col1.button("🎤 Record")
+        # ✅ FIXED: Replace record button with audio_input widget
+        audio_file = col1.audio_input("🎤 Record")
         submit = col3.button("Send")
         
-        # Initialize voice_path
+        # ✅ FIXED: Process audio input using Whisper
         voice_path = None
-        
-        # Handle recording
-        if record:
-            voice_path, transcript = record_audio()
+        if audio_file is not None:
+            st.audio(audio_file)  # Play back the recorded audio
+            voice_path, transcript = process_audio_input(audio_file, whisper_model)
             if transcript:
-                st.session_state.anxiety_transcript = transcript
-                col2.text_input("Your message", value=transcript, key="anxiety_text_input")
+                st.session_state.transcript = transcript
+                st.session_state.voice_path = voice_path
+                st.session_state.text_input_val = transcript
         
-        # Text input (only show if not recording)
-        if not record:
-            text_input = col2.text_input("Your message", key="anxiety_text_input", 
-                                        value=st.session_state.anxiety_transcript)
-        else:
-            text_input = st.session_state.anxiety_transcript
+        # Text input
+        text_input = col2.text_input("Your message", key="anxiety_text_input", 
+                                    value=st.session_state.text_input_val)
         
         # Handle submission
-        if submit or (st.session_state.anxiety_transcript and record):
-            user_query = text_input or st.session_state.anxiety_transcript
+        if submit:
+            # Prioritize voice input if available
+            if st.session_state.transcript and st.session_state.voice_path:
+                user_query = st.session_state.transcript
+                audio_file_path = st.session_state.voice_path
+            else:
+                user_query = text_input
+                audio_file_path = None
             
-            if not user_query and not voice_path:
+            if not user_query and not audio_file_path:
                 st.warning("Please enter a message or record your voice.")
             else:
                 # Get anxiety assessment
                 with st.spinner("Analyzing..."):
                     try:
                         anxiety_level, response_message = get_anxiety_response(
-                            user_query, voice_path, tokenizer, anxiety_model
+                            user_query, audio_file_path, tokenizer, anxiety_model
                         )
                         
                         # Add to chat history
@@ -254,7 +269,7 @@ def render_anxiety_detection_ui():
                             "anxiety_level": anxiety_level,
                             "response": response_message,
                             "timestamp": datetime.now().isoformat(),
-                            "has_audio": voice_path is not None
+                            "has_audio": audio_file_path is not None
                         })
                         
                         # If user is logged in, store in student profile
@@ -270,7 +285,7 @@ def render_anxiety_detection_ui():
                                         "timestamp": datetime.now(),
                                         "level": anxiety_level,
                                         "input_text": user_query,
-                                        "has_audio": voice_path is not None
+                                        "has_audio": audio_file_path is not None
                                     }}}
                                 )
                             except Exception as profile_err:
@@ -278,7 +293,7 @@ def render_anxiety_detection_ui():
                         
                         # Also save to the anxiety database
                         try:
-                            save_anxiety_assessment(user_query, anxiety_level, voice_path is not None)
+                            save_anxiety_assessment(user_query, anxiety_level, audio_file_path is not None)
                         except Exception as db_err:
                             st.error(f"Error saving to anxiety database: {db_err}")
                         
@@ -298,15 +313,10 @@ def render_anxiety_detection_ui():
                     except Exception as assess_error:
                         st.error(f"Error during anxiety assessment: {assess_error}")
                 
-                # Clear input and transcript
-                st.session_state.anxiety_transcript = ""
-                
-                # Clean up temp file if it exists
-                if voice_path:
-                    try:
-                        os.unlink(voice_path)
-                    except:
-                        pass
+                # ✅ FIXED: Clear session state after submission
+                st.session_state.text_input_val = ""
+                st.session_state.transcript = ""
+                st.session_state.voice_path = ""
                         
                 # Rerun to update UI
                 st.rerun()
