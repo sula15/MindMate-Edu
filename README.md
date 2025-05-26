@@ -1,4 +1,4 @@
-# Enhanced RAG System with Personalization & Anxiety Detection
+# MindMate-Edu-Enhanced RAG System with Personalization & Anxiety Detection
 
 A comprehensive multimodal Retrieval-Augmented Generation (RAG) system designed for educational environments, featuring intelligent document processing, student personalization, and mental health support.
 
