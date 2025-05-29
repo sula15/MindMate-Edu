@@ -21,21 +21,55 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Function to create MongoDB connection using environment variables
-def connect_to_mongodb():
-    """Create MongoDB connection using environment variables"""
+def get_mongo_client():
+    """Create MongoDB connection using environment variables with fallback"""
     # Get MongoDB connection string
     mongo_uri = os.getenv("MONGODB_URI")
+    
+    # If no environment variable, use local MongoDB
     if not mongo_uri:
-        # Fallback for development/testing only
-        logger.warning("MongoDB URI not found in environment variables. Using fallback connection.")
+        logger.warning("MongoDB URI not found in environment variables. Using local MongoDB.")
         mongo_uri = "mongodb://localhost:27017/"
     
-    return MongoClient(mongo_uri)
+    try:
+        # Try to connect with a short timeout to fail fast
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+        # Test the connection
+        client.server_info()
+        logger.info("Successfully connected to MongoDB")
+        return client
+    except Exception as e:
+        logger.error(f"Failed to connect to MongoDB Atlas: {e}")
+        # Fallback to local MongoDB
+        try:
+            logger.info("Attempting fallback to local MongoDB...")
+            local_client = MongoClient("mongodb://localhost:27017/", serverSelectionTimeoutMS=5000)
+            local_client.server_info()
+            logger.info("Successfully connected to local MongoDB")
+            return local_client
+        except Exception as local_e:
+            logger.error(f"Failed to connect to local MongoDB: {local_e}")
+            # Return None if both connections fail
+            return None
 
-# MongoDB setup using environment variables
-client = connect_to_mongodb()
-db = client["anxiety_db"]
-collection = db["historical_data"]
+# Global variables - will be initialized when needed
+client = None
+db = None
+collection = None
+
+def initialize_mongodb():
+    """Initialize MongoDB connection when needed"""
+    global client, db, collection
+    
+    if client is None:
+        client = get_mongo_client()
+        if client is not None:
+            db = client["anxiety_db"]
+            collection = db["historical_data"]
+        else:
+            logger.error("Could not establish MongoDB connection")
+    
+    return client is not None
 
 # Load saved model and data
 try:
@@ -93,19 +127,59 @@ def get_recommendations(past_anxiety_level):
 
 # Retrieve last past_anxiety_level from MongoDB
 def get_last_past_anxiety_level():
-    last_feedback = list(collection.find().sort("timestamp", -1).limit(1))  # Convert the cursor to a list
-    if len(last_feedback) > 0:
-        return last_feedback[0].get("current_anxiety_level", "Mild")
-    else:
+    """Get the last anxiety level from MongoDB with error handling"""
+    try:
+        if not initialize_mongodb():
+            logger.warning("MongoDB not available, returning default anxiety level")
+            return "Mild"
+        
+        last_feedback = list(collection.find().sort("timestamp", -1).limit(1))
+        if len(last_feedback) > 0:
+            return last_feedback[0].get("current_anxiety_level", "Mild")
+        else:
+            return "Mild"
+    except Exception as e:
+        logger.error(f"Error getting last anxiety level: {e}")
         return "Mild"
     
 # Retrieve current anxiety level from MongoDB
 def get_current_anxiety_level():
-    current_anxiety = collection.find_one({"type": "current_anxiety_level"})  # Assuming 'type' is the key to differentiate collections
-    if current_anxiety:
-        return current_anxiety.get("level", "Moderate")
-    else:
+    """Get current anxiety level from MongoDB with error handling"""
+    try:
+        if not initialize_mongodb():
+            logger.warning("MongoDB not available, returning default anxiety level")
+            return "Moderate"
+        
+        current_anxiety = collection.find_one({"type": "current_anxiety_level"})
+        if current_anxiety:
+            return current_anxiety.get("level", "Moderate")
+        else:
+            return "Moderate"
+    except Exception as e:
+        logger.error(f"Error getting current anxiety level: {e}")
         return "Moderate"
+
+# Save to MongoDB
+def save_anxiety_assessment(query, anxiety_level, has_audio=False):
+    """Save anxiety assessment to MongoDB with error handling"""
+    try:
+        if not initialize_mongodb():
+            logger.warning("MongoDB not available, skipping save")
+            return False
+        
+        data = {
+            "type": "current_anxiety_level",
+            "level": anxiety_level,
+            "query": query,
+            "has_audio": has_audio,
+            "timestamp": datetime.datetime.now()
+        }
+        collection.insert_one(data)
+        logger.info("Successfully saved anxiety assessment")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving anxiety assessment: {e}")
+        return False
 
 def render_anxiety_solutions_ui():
     """Render the anxiety solutions UI as a component for main.py"""
@@ -206,7 +280,15 @@ def render_anxiety_solutions_ui():
                         "recommendations": st.session_state.recommendations,
                         "feedback": feedback_rating
                     }
-                    collection.insert_one(feedback_data)
+                    
+                    # Try to save to MongoDB
+                    saved = False
+                    try:
+                        if initialize_mongodb():
+                            collection.insert_one(feedback_data)
+                            saved = True
+                    except Exception as e:
+                        logger.error(f"Error saving feedback to MongoDB: {e}")
                     
                     # Also store in student profile if available
                     try:
@@ -225,10 +307,11 @@ def render_anxiety_solutions_ui():
                     except Exception as profile_err:
                         logger.error(f"Error storing feedback in profile: {profile_err}")
                     
-                    st.success("Thank you for your feedback!")
-                    st.session_state.feedback_submitted = True
-                    time.sleep(1)
-                    st.rerun()
+                    if saved or True:  # Show success even if MongoDB fails
+                        st.success("Thank you for your feedback!")
+                        st.session_state.feedback_submitted = True
+                        time.sleep(1)
+                        st.rerun()
         else:
             st.success("✅ You have already submitted your feedback. Thank you!")
         
@@ -303,8 +386,18 @@ def main():
                     "recommendations": st.session_state.recommendations,
                     "feedback": feedback_rating
                 }
-                collection.insert_one(feedback_data)
-                st.success("Thank you for your feedback!")
+                
+                # Try to save to MongoDB
+                try:
+                    if initialize_mongodb():
+                        collection.insert_one(feedback_data)
+                        st.success("Thank you for your feedback!")
+                    else:
+                        st.warning("Feedback saved locally (database not available)")
+                except Exception as e:
+                    logger.error(f"Error saving feedback: {e}")
+                    st.warning("Feedback noted (database temporarily unavailable)")
+                
                 st.session_state.feedback_submitted = True
         else:
             st.info("✅ You have already submitted your feedback. Thank you!")
